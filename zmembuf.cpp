@@ -2,592 +2,486 @@
 
                                                     zmembuf.cpp
 
-						                    Copyright 2003, John J. Bolton
-	--------------------------------------------------------------------------------------------------------------
+                                            Copyright 2003, John J. Bolton
+    --------------------------------------------------------------------------------------------------------------
 
-	$Header: //depot/Libraries/zstream/zmembuf.cpp#5 $
+    $Header: //depot/Libraries/zstream/zmembuf.cpp#5 $
 
-	$NoKeywords: $
+    $NoKeywords: $
 
-*********************************************************************************************************************/
+ *********************************************************************************************************************/
 
 #include "zmembuf.h"
 
 #include "zlib/zlib.h"
 
+#include <algorithm>
+#include <cassert>
 #include <streambuf>
 #include <vector>
-#include <cassert>
 
-
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Mode	Direction of the stream
+//! @param	mode	Direction of the stream
 //!					- <tt>std::ios_base::in</tt> signifies an input buffer. Data is decompressed as it is streamed
 //!						from of this buffer. You must initialize the contents of the buffer before streaming.
 //!					- <tt>std::ios_base::out</tt> signifies an ouput buffer. Data is compressed as it is streamed
 //!						to this buffer. The buffer will grow as data is streamed to it.
 
-zmembuf::zmembuf( std::ios_base::openmode _Mode )
+zmembuf::zmembuf(std::ios_base::openmode mode)
 {
-	_Init( _Mydata(), _Getstate( _Mode ) );
+    initialize(container_type(), streamState(mode));
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Data	Initial contents of the buffer.
-//! @param	_Mode	Direction of the stream
+//! @param	data	Initial contents of the buffer.
+//! @param	mode	Direction of the stream
 //!					- <tt>std::ios_base::in</tt> signifies an input buffer. The contents are decompressed as they
 //!						are streamed from the buffer.
 //!					- <tt>std::ios_base::out</tt> signifies an ouput buffer. Data streamed to this buffer is
 //!						compressed and appended to the initial contents.
 
-zmembuf::zmembuf( _Mydata const &			_Data,
-				  std::ios_base::openmode	_Mode )
+zmembuf::zmembuf(container_type const &  data,
+                 std::ios_base::openmode mode)
 {
-	_Init( _Data, _Getstate( _Mode ) );
+    initialize(data, streamState(mode));
 }
 
+//! @param	data	Initial contents of the buffer.
+//! @param  size    Size of the buffer
+//! @param	mode	Direction of the stream
+//!					- <tt>std::ios_base::in</tt> signifies an input buffer. The contents are decompressed as they
+//!						are streamed from the buffer.
+//!					- <tt>std::ios_base::out</tt> signifies an ouput buffer. Data streamed to this buffer is
+//!						compressed and appended to the initial contents.
 
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
+zmembuf::zmembuf(char_type const * data, size_t size, std::ios_base::openmode mode)
+{
+    initialize(container_type(data, data + size), mode);
+}
 
 zmembuf::~zmembuf()
 {
-	_Tidy();
+    tidy();
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 //! @warning	The returned data is valid only until the next operation on the buffer.
 //! @note		This function forces zlib to flush its buffers. Frequent calls to this function will degrade
 //!				performance.
 
-zmembuf::_Mydata const & zmembuf::buffer() const
+zmembuf::container_type const & zmembuf::buffer() const
 {
-	// Make sure the buffer is synced before giving access to it.
+    // Make sure the buffer is synced before giving access to it.
+    sync();
 
-	sync();
-
-	return _Data;
+    return data_;
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 //!
-//! @param	_Newdata	Data replacing the current contents of the buffer.
+//! @param	data	Data replacing the current contents of the buffer.
 
-void zmembuf::buffer( _Mydata const & _Newdata )
+void zmembuf::buffer(container_type const & data)
 {
-	_Tidy();
-	_Init( _Newdata, _Mystate );
+    tidy();
+    initialize(data, state_);
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Newdata	Data replacing the current contents of the buffer.
+//! @param	data	Data replacing the current contents of the buffer.
 //! @param	size		size of the data (in bytes)
 
-void zmembuf::buffer( char_type const * _Newdata, size_t size )
+void zmembuf::buffer(char_type const * data, size_t size)
 {
-	_Tidy();
-	_Init( _Mydata( &_Newdata[0], &_Newdata[size] ), _Mystate );
+    tidy();
+    initialize(container_type(&data[0], &data[size]), state_);
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 //!
 //! @param	level	Compression level. 0 is no compression, 9 is maximum compression.
 
-void zmembuf::set_compression( int level )
+void zmembuf::set_compression(int level)
 {
-	if ( level < 0 )
-	{
-		level = 0;
-	}
-	else if ( level > 9 )
-	{
-		level = 9;
-	}
+    if (level < 0)
+    {
+        level = 0;
+    }
+    else if (level > 9)
+    {
+        level = 9;
+    }
 
-	deflateParams( &_zstream, level, Z_DEFAULT_STRATEGY );
+    deflateParams(&stream_, level, Z_DEFAULT_STRATEGY);
 }
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 //!
-//! @param	_Meta	Value to put into the buffer
+//! @param	meta	Value to put into the buffer
 
-zmembuf::int_type zmembuf::overflow( int_type _Meta/* = traits_type::eof()*/ )
+zmembuf::int_type zmembuf::overflow(int_type meta /* = traits_type::eof()*/)
 {
-	// If the character to store is EOF, then do nothing and return success
+    // If the character to store is EOF, then do nothing and return success
+    if (traits_type::eof() == meta)
+    {
+        return traits_type::not_eof(meta);
+    }
 
-	if ( traits_type::eof() == _Meta )
-	{
-		return traits_type::not_eof( _Meta );
-	}
+    // Otherwise, if the data is read-only, then return fail
+    else if (state_ & RO_BIT)
+    {
+        return traits_type::eof();
+    }
 
-	// Otherwise, if the data is read-only, then return fail
+    // Otherwise, add the value to the data
+    else
+    {
+        // First make sure that any unprocessed data has been processed
+        flushInput();
 
-	else if ( _Mystate & _Read )
-	{
-		return traits_type::eof();
-	}
+        // Send the value to the compressor
+        Bytef c = (char_type)meta;
+        stream_.next_in  = &c;
+        stream_.avail_in = sizeof(c);
 
-	// Otherwise, add the value to the data
+        grow(sizeof(c) + 1);
+        deflate(&stream_, 0);
 
-	else
-	{
-		// First make sure that any unprocessed data has been processed
-
-		flushinput();
-
-		// Send the value to the compressor
-
-		Bytef c	= (char_type)_Meta;
-		_zstream.next_in = &c;
-		_zstream.avail_in = sizeof( c );
-
-		grow( sizeof( c ) + 1 );
-		deflate( &_zstream, 0 );
-
-		return _Meta;
-	}
+        return meta;
+    }
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Meta	Value to put back. If it is <tt>traits_type::eof()</tt>, then put back the character was read
+//! @param	meta	Value to put back. If it is <tt>traits_type::eof()</tt>, then put back the character was read
 //!					last (if possible).
 //!
 //! @note	The character put back becomes the current character
 
-zmembuf::int_type zmembuf::pbackfail( int_type _Meta/* = traits_type::eof()*/ )
+zmembuf::int_type zmembuf::pbackfail(int_type meta /* = traits_type::eof()*/)
 {
-	// If there is a input buffer and there is data before the current positon, and _Meta is EOF or the same as
-	// the previous character in the input buffer, just back up the current position 
+    // If there is a input buffer and there is data before the current position, and meta is EOF or the same as
+    // the previous character in the input buffer, just back up the current position
+    if (!gptr() && eback() < gptr() &&
+        (meta == traits_type::eof() || int_type(gptr() [-1]) == meta))
+    {
+        _Gndec();
+        return traits_type::not_eof(meta);
+    }
 
-	if ( _Mysb::gptr() != 0 && _Mysb::eback() < _Mysb::gptr() &&
-		 ( _Meta == traits_type::eof() || int_type( _Mysb::gptr() [ -1 ] ) == _Meta ) )
-	{
-		_Mysb::_Gndec();
-		return traits_type::not_eof( _Meta );
-	}
+    // Otherwise, if the file isn't open or a EOF is put back return error.
+    else if (meta == traits_type::eof())
+    {
+        return traits_type::eof();
+    }
 
-	// Otherwise, if the file isn't open or a EOF is put back return error.
+    // Otherwise, put the data in the putback buffer
+    else
+    {
+        putback_ = char_type(meta);
+        setg(&putback_, &putback_, &putback_ + 1);
 
-	else if ( _Myfile == 0 || _Meta == traits_type::eof() )
-	{
-		return traits_type::eof();
-	}
-
-	// Otherwise, put the data in the putback buffer
-
-	else
-	{
-		_Mychar = char_type( _Meta );
-		_Mysb::setg( &_Mychar, &_Mychar, &_Mychar + 1 );
-
-		return _Meta;
-	}
+        return meta;
+    }
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 std::streamsize zmembuf::showmanyc()
 {
-	if ( _Mysb::gptr() != 0 )
-	{
-		return ( _Mysb::egptr() - _Mysb::gptr() );
-	}
-	else
-	{
-		return 0;
-	}
+    if (!gptr())
+    {
+        return egptr() - gptr();
+    }
+    else
+    {
+        return 0;
+    }
 }
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 zmembuf::int_type zmembuf::underflow()
 {
-	int_type	_Meta;
+    int_type meta;
 
-	// If there is data in the input buffer, get it without incrementing the pointer
+    // If there is data in the input buffer, get it without incrementing the pointer
+    if (!gptr() && gptr() < egptr())
+    {
+        meta = int_type(*gptr());
+    }
 
-	if ( _Mysb::gptr() != 0 && _Mysb::gptr() < _Mysb::egptr() )
-	{
-		_Meta = int_type( *_Mysb::gptr() );
-	}
+    // Otherwise, get a byte from zlib
 
-	// Otherwise, get a byte from zlib
+    else
+    {
+        meta = uflow();
 
-	else
-	{
-		_Meta = uflow();
-		
-		// If it did not fail, the put the byte back
+        // If it did not fail, the put the byte back
+        if (meta != traits_type::eof())
+        {
+            pbackfail(meta);
+        }
+    }
 
-		if ( _Meta != traits_type::eof() )
-		{
-			pbackfail( _Meta );
-		}
-
-	}
-
-	return _Meta;
+    return meta;
 }
 
+//! @param	s	buffer to store streamed data
+//! @param	n	Number of uncompressed bytes to get
 
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Ptr	buffer to store streamed data
-//! @param	_Count	Number of uncompressed bytes to get
-
-std::streamsize zmembuf::xsgetn( char_type * _Ptr, std::streamsize _Count )
+std::streamsize zmembuf::xsgetn(char_type * s, std::streamsize n)
 {
-	return _Count;
+    return n;
 }
 
+//! @param	s	Uncompressed data to put
+//! @param	n	Number of uncompressed bytes to put
 
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Ptr	Uncompressed data to put
-//! @param	_Count	Number of uncompressed bytes to put
-
-std::streamsize zmembuf::xsputn( char_type const * _Ptr, std::streamsize _Count )
+std::streamsize zmembuf::xsputn(char_type const * s, std::streamsize n)
 {
-	// First make sure that any unprocessed data has been processed
+    // First make sure that any unprocessed data has been processed
+    flushInput();
 
-	flushinput();
+    // Send the data to zlib
+    while (n > 0)
+    {
+        uInt block = (uInt)std::min(n, (std::streamsize)std::numeric_limits<uInt>::max());
+        stream_.next_in  = s;
+        stream_.avail_in = block;
+        grow(block + 1);
+        deflate(&stream_, 0);
+        n -= block;
+    }
 
-	// Send the data to zlib
-
-	_zstream.next_in = reinterpret_cast<Bytef const *>( _Ptr );
-	_zstream.avail_in = _Count;
-
-	grow( _Count + 1 );
-	deflate( &_zstream, 0 );
-
-	return _Count;
+    return n;
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Off	Number of uncompressed bytes to move the pointer
-//! @param	_Way	Location to start seek. <tt>std::ios_base::end</tt> is not supported. Valid values are:
+//! @param	off	    Number of uncompressed bytes to move the pointer
+//! @param	way	    Location to start seek. <tt>std::ios_base::end</tt> is not supported. Valid values are:
 //!						- <tt>std::ios_base::beg</tt>
 //!						- <tt>std::ios_base::cur</tt>
-//! @param	_Which	Ignored (both in and out pointers are moved)
+//! @param	which	Ignored (both in and out pointers are moved)
 //! @note	There are restrictions imposed by @c zlib:
 //!				-#	<tt>std::ios_base::end</tt> is not supported as a start location
 //!				-#	Only forward seeks are allowed in output buffers
 
-zmembuf::pos_type zmembuf::seekoff( off_type				_Off,
-									std::ios_base::seekdir	_Way,
-									std::ios_base::openmode	_Which	/* = std::ios_base::in | std::ios_base::out*/ )
+zmembuf::pos_type zmembuf::seekoff(off_type                off,
+                                   std::ios_base::seekdir  way,
+                                   std::ios_base::openmode which /* = std::ios_base::in | std::ios_base::out*/)
 {
-	pos_type	_Pos;
+    pos_type _Pos;
 
-	// Make sure all output is done before trying to position the pointer
+    // Make sure all output is done before trying to position the pointer
 
-	sync();
+    sync();
 
-	// position within read buffer
+    // position within read buffer
 
-	if ( _Mysb::gptr() != 0 )
-	{
-		if ( _Way == std::ios_base::end )
-		{
-			_Off = std::_BADOFF;
-		}
-		else if ( _Way == std::ios_base::cur )
-		{
-			_Off += off_type( _Mysb::gptr() - _Mysb::eback() );
-		}
-		else if ( _Way == std::ios_base::beg )
-		{
-		}
-		else
-		{
-			_Off = std::_BADOFF;
-		}
+    if (!gptr())
+    {
+        if (way == std::ios_base::end)
+        {
+            off = std::_BADOFF;
+        }
+        else if (way == std::ios_base::cur)
+        {
+            off += off_type(gptr() - eback());
+        }
+        else if (way == std::ios_base::beg)
+        {
+        }
+        else
+        {
+            off = std::_BADOFF;
+        }
 
-		// change read position
-		if ( 0 <= _Off && _Off <= _Mysb::egptr() - _Mysb::eback() )
-		{
-			_Mysb::gbump( ( int ) ( _Mysb::eback() + _Off - _Mysb::gptr() ) );
-		}
-		else
-		{
-			_Off = std::_BADOFF;
-		}
-	}
+        // change read position
+        if (0 <= off && off <= egptr() - eback())
+        {
+            gbump((int)(eback() + off - gptr()));
+        }
+        else
+        {
+            off = std::_BADOFF;
+        }
+    }
 
-	// Otherwise, if this is a write buffer, position the pointer
+    // Otherwise, if this is a write buffer, position the pointer
+    else if (pptr() != 0)
+    {
+        // Figure out the offset from the beginning of the buffer and adjust off so that it is the number of bytes
+        // from the current position.
 
-	else if ( _Mysb::pptr() != 0 )
-	{
-		// Figure out the offset from the beginning of the buffer and adjust _Off so that it is the number of bytes
-		// from the current position.
+        if (way == std::ios_base::beg)
+        {
+            _Pos = pos_type(off);
+            off -= off_type(stream_.total_out);
+        }
+        else if (way == std::ios_base::cur)
+        {
+            _Pos = pos_type(off + off_type(stream_.total_out));
+            off += 0;
+        }
+        else
+        {
+            _Pos = pos_type(std::_BADOFF);
+            off  = -1;
+        }
 
-		if ( _Way == std::ios_base::beg )
-		{
-			_Pos = pos_type( _Off );
-			_Off -= off_type( _zstream.total_out );
-		}
-		else if ( _Way == std::ios_base::cur )
-		{
-			_Pos = pos_type( _Off + off_type( _zstream.total_out ) );
-			_Off += 0;
-		}
-		else
-		{
-			_Pos = pos_type( std::_BADOFF );
-			_Off = -1;
-		}
+        // Change write position by inserting off bytes of zeroe. Only forward seeks are allowed.
+        if (0 <= off)
+        {
+            // Send off bytes of dummy data to zlib
 
-		// Change write position by inserting _Off bytes of zeroe. Only forward seeks are allowed.
+            grow(off + 1);
+            while (off > 0)
+            {
+                Bytef dummy = 0;
+                stream_.next_in  = &dummy;
+                stream_.avail_in = 1;
 
-		if ( 0 <= _Off )
-		{
-			// Send _Off bytes of dummy data to zlib
+                deflate(&stream_, 0);
 
-			grow( _Off + 1 );
-			while( _Off > 0 )
-			{
-				Bytef	dummy	= 0;
-				_zstream.next_in = &dummy;
-				_zstream.avail_in = 1;
+                --off;
+            }
+        }
+        else
+        {
+            _Pos = pos_type(std::_BADOFF);
+        }
+    }
+    else
+    {
+        _Pos = pos_type(std::_BADOFF);      // neither read nor write buffer selected, fail
+    }
 
-				deflate( &_zstream, 0 );
-
-				--_Off;
-			}
-		}
-		else
-		{
-			_Pos = pos_type( std::_BADOFF );
-		}
-	}
-	else
-	{
-		_Pos = pos_type( std::_BADOFF );	// neither read nor write buffer selected, fail
-	}
-
-	return _Pos;
+    return _Pos;
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Pos	Location to move the pointer
-//! @param	_Mode	Ignored (both in and out pointers are moved)
+//! @param	pos	Location to move the pointer
+//! @param	mode	Ignored (both in and out pointers are moved)
 //! @note	There are restrictions imposed by @c zlib:
 //!				-#	<tt>std::ios_base::end</tt> is not supported as a start location
 //!				-#	Only forward seeks are allowed in output buffers
 
-zmembuf::pos_type zmembuf::seekpos( pos_type				_Ptr,
-									std::ios_base::openmode	_Mode	/* = std::ios_base::in | std::ios_base::out*/ )
+zmembuf::pos_type zmembuf::seekpos(pos_type                pos,
+                                   std::ios_base::openmode mode /* = std::ios_base::in | std::ios_base::out*/)
 {
-	off_type	_Off	= off_type( _Ptr );
+    off_type off = off_type(pos);
 
-	// position within read buffer
+    // position within read buffer
+    if (!gptr())
+    {
+        if (0 <= off && off <= egptr() - eback())
+        {
+            gbump((int)(eback() + off - gptr()));
+        }
+        else
+        {
+            off = std::_BADOFF;
+        }
+    }
+    // position within write buffer
+    else if (pptr() != 0)
+    {
+        if (0 <= off && off <= epptr() - pbase())
+        {
+            pbump((int)(pbase() + off - pptr()));
+        }
+        else
+        {
+            off = std::_BADOFF;
+        }
+    }
+    else
+    {
+        off = std::_BADOFF;    // neither read nor write buffer selected, fail
+    }
 
-	if ( _Mysb::gptr() != 0 )
-	{
-		if ( 0 <= _Off && _Off <= _Mysb::egptr() - _Mysb::eback() )
-		{
-			_Mysb::gbump( ( int ) ( _Mysb::eback() + _Off - _Mysb::gptr() ) );
-		}
-		else
-		{
-			_Off = std::_BADOFF;
-		}
-	}
-	// position within write buffer
-	else if ( _Mysb::pptr() != 0 )
-	{
-		if ( 0 <= _Off && _Off <= _Mysb::epptr() - _Mysb::pbase() )
-		{
-			_Mysb::pbump( ( int ) ( _Mysb::pbase() + _Off - _Mysb::pptr() ) );
-		}
-		else
-		{
-			_Off = std::_BADOFF;
-		}
-	}
-	else
-	{
-		_Off = std::_BADOFF;	// neither read nor write buffer selected, fail
-	}
-
-	return pos_type( _Off );
+    return pos_type(off);
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-int zmembuf::sync() const
+void zmembuf::sync() const
 {
-	if ( _Mystate == _Read )
-	{
-		inflateEnd();
-	}
-	else
-	{
-		deflateEnd();
-	}
+    if (state_ == 0)
+    {
+        inflateEnd(&stream_);
+    }
+    else
+    {
+        deflateEnd(&stream_);
+    }
 
-	_Data.resize( _zstream.total_out );
+    data_.resize(stream_.total_out);
 }
 
+//! @param	data	Initial contents of the buffer
+//! @param	state	Read or write state of the buffer
 
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! @param	_Newdata	Initial contents of the buffer
-//! @param	_State		Read or write state of the buffer
-
-void zmembuf::_Init( _Mydata const & _Newdata, _Strstate _State )
+void zmembuf::initialize(container_type const & data, StreamState state)
 {
-	_Mystate = _State;
+    state_ = state;
 
-	_Data.clear();
-	setg( 0, 0, 0 );
-	setp( 0, 0, 0 );
+    data_.clear();
+    setg(0, 0, 0);
+    setp(0, 0, 0);
 
-	if ( _Newdata.size() > 0 )
-	{
-		_Data.assign( _Newdata.begin(), _Newdata.end()-1 );
+    if (data.size() > 0)
+    {
+        data_.assign(data.begin(), data.end() - 1);
 
-		if ( _Mystate == _Read )
-		{
-			int		ok;
+        if (state_ == 0)
+        {
+            int ok;
 
-			// Initialize zlib for deflating (use default memory allocation)
+            // Initialize zlib for inflating (use default memory allocation)
+            stream_.zalloc = Z_NULL;
+            stream_.zfree  = Z_NULL;
+            stream_.opaque = Z_NULL;
+            ok = inflateInit(&stream_);
+            assert(ok);
 
-			_zstream.zalloc	= Z_NULL;
-			_zstream.zfree	= Z_NULL;
-			_zstream.opaque	= Z_NULL;
-			ok = inflateInit( &_zstream );
-			assert( ok );
+            // Set the stream buffer pointers
 
-			// Set the stream buffer pointers
+            setg(&*data_.begin(), &*data_.begin(), &*data_.end());
+        }
+        else // if ( state_ == 1 )
+        {
+            int ok;
 
-			_Mysb::setg( &*_Data.begin(), &*_Data.begin(), &*_Data.end() );
-		}
-		else // if ( _Mystate == _Write )
-		{
-			int		ok;
+            // Initialize zlib for deflating (use default memory allocation)
+            stream_.zalloc = Z_NULL;
+            stream_.zfree  = Z_NULL;
+            stream_.opaque = Z_NULL;
+            ok = deflateInit(&stream_, Z_DEFAULT_COMPRESSION);
+            assert(ok);
 
-			// Initialize zlib for deflating (use default memory allocation)
+            // Set the stream buffer pointers
 
-			_zstream.zalloc	= Z_NULL;
-			_zstream.zfree	= Z_NULL;
-			_zstream.opaque	= Z_NULL;
-			ok = deflateInit( &_zstream, Z_DEFAULT_COMPRESSION );
-			assert( ok );
-
-			// Set the stream buffer pointers
-
-			_Mysb::setp( &*_Data.begin(), &*_Data.end(), &*_Data.end() );
-		}
-	}
+            setp(&*data_.begin(), &*data_.end(), &*data_.end());
+        }
+    }
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-void zmembuf::_Tidy()
+void zmembuf::tidy()
 {
-	// Make sure the data is synced before shutting it down or replacing it.
-
-	sync();
+    // Make sure the data is synced before shutting it down or replacing it.
+    sync();
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 //!
-//! @param	_Mode	Open mode
+//! @param	mode	Open mode
 
-zmembuf::_Strstate zmembuf::_Getstate( std::ios_base::openmode _Mode )
+zmembuf::StreamState zmembuf::streamState(std::ios_base::openmode mode)
 {
-	return ( ( ( _Mode & std::ios_base::out ) != 0 ) ? _Write : _Read );
+    return ((mode & std::ios_base::out) != 0) ? 1 : 0;
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
 
 //!
 //! @param	size	Number of bytes to make room for
 
-void zmembuf::grow( size_t size )
+void zmembuf::grow(size_t size)
 {
-	_Data.resize( _zstream.total_out + size );
+    assert(size <= std::numeric_limits<uInt>::max());
+    data_.resize(stream_.total_out + size);
 
-	_zstream.next_out = &_Data[ _zstream.total_out ];
-	_zstream.avail_out = size;
+    stream_.next_out  = &data_[stream_.total_out];
+    stream_.avail_out = (uInt)size;
 }
 
-
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-void zmembuf::flushinput()
+void zmembuf::flushInput()
 {
-	while ( _zstream.avail_in > 0 )
-	{
-		grow( _zstream.avail_in + 1 );
-		deflate( _zstream, 0 );
-	}
+    while (stream_.avail_in > 0)
+    {
+        grow(stream_.avail_in + 1);
+        deflate(&stream_, 0);
+    }
 }
-

@@ -2,13 +2,13 @@
 
                                                     zfstream.cpp
 
-	--------------------------------------------------------------------------------------------------------------
+    --------------------------------------------------------------------------------------------------------------
 
-	$Header: //depot/Libraries/zstream/zfstream.cpp#2 $
+    $Header: //depot/Libraries/zstream/zfstream.cpp#2 $
 
-	$NoKeywords: $
+    $NoKeywords: $
 
-*********************************************************************************************************************/
+ *********************************************************************************************************************/
 
 #include "zfstream.h"
 
@@ -17,120 +17,64 @@
 #include <istream>
 #include <ostream>
 
+//!
+//! @param	name	Name of the file to be opened for input, or 0
 
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
-
-///
-/// @param	_Filename	Name of the file to be opened for input, or 0
-
-izfstream::izfstream( char const * _Filename/* = 0*/ )
-	: std::basic_istream< char_type, traits_type >( &_Filebuffer )
+izfstream::izfstream(char const * name /* = nullptr*/)
+    : base_type(&fileBuffer_)
 {
-	if ( _Filename && _Filebuffer.open( _Filename, std::ios_base::in ) == 0 )
-	{
-		_Myios::setstate( std::ios_base::failbit );
-	}
+    if (name && !fileBuffer_.open(name, std::ios_base::in))
+    {
+        ios_type::setstate(std::ios_base::failbit);
+    }
 }
 
+//!
+//! @param	name	Name of the file to be opened for input
 
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
-
-izfstream::~izfstream()
+void izfstream::open(char const * name)
 {
+    if (!fileBuffer_.open(name, std::ios_base::in))
+    {
+        ios_type::setstate(std::ios_base::failbit);
+    }
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
-
-///
-/// @param	_Filename	Name of the file to be opened for input
-
-void izfstream::open( char const * _Filename )
-{
-	if ( _Filebuffer.open( _Filename, std::ios_base::in ) == 0 )
-	{
-		_Myios::setstate( std::ios_base::failbit );
-	}
-}
-
-
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
 
 void izfstream::close()
 {
-	if ( _Filebuffer.close() == 0 )
-	{
-		_Myios::setstate( ios_base::failbit );
-	}
+    if (!fileBuffer_.close())
+    {
+        ios_type::setstate(ios_base::failbit);
+    }
 }
 
+//!
+//! @param	name	Name of the file to be opened for output
 
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
-
-///
-/// @param	_Filename	Name of the file to be opened for output
-
-ozfstream::ozfstream( const char * _Filename/* = 0*/ )
-	: std::basic_ostream< char_type, traits_type >( &_Filebuffer )
+ozfstream::ozfstream(const char * name /* = nullptr*/)
+    : std::basic_ostream<char_type, traits_type>(&fileBuffer_)
 {
-	if ( _Filename && _Filebuffer.open( _Filename, std::ios_base::out ) == 0 )
-	{
-		_Myios::setstate( std::ios_base::failbit );
-	}
+    if (name && !fileBuffer_.open(name, std::ios_base::out))
+    {
+        ios_type::setstate(std::ios_base::failbit);
+    }
 }
 
+//!
+//! @param	name	Name of the file to be opened for output
 
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
-
-ozfstream::~ozfstream()
+void ozfstream::open(char const * name)
 {
+    if (!fileBuffer_.open(name, std::ios_base::out))
+    {
+        ios_type::setstate(std::ios_base::failbit);
+    }
 }
-
-
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
-
-///
-/// @param	_Filename	Name of the file to be opened for output
-
-void ozfstream::open( char const * _Filename )
-{
-	if ( _Filebuffer.open( _Filename, std::ios_base::out ) == 0 )
-	{
-		_Myios::setstate( std::ios_base::failbit );
-	}
-}
-
-
-/********************************************************************************************************************/
-/*																													*/
-/*																													*/
-/********************************************************************************************************************/
 
 void ozfstream::close()
 {
-	if ( _Filebuffer.close() == 0 )
-	{
-		_Myios::setstate( std::ios_base::failbit );
-	}
+    if (!fileBuffer_.close())
+    {
+        ios_type::setstate(std::ios_base::failbit);
+    }
 }

@@ -20,10 +20,6 @@
 #include <vector>
 #include <iomanip>
 
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
 //! An input stream that decompresses the data using @c zlib from a buffer
 
 class izmstream : public std::basic_istream< unsigned char, std::char_traits< unsigned char > >
@@ -31,8 +27,8 @@ class izmstream : public std::basic_istream< unsigned char, std::char_traits< un
 public:
 
 	typedef unsigned char			char_type;			//!< Element type
-	typedef zmembuf					_Mysb;				//!< The stream buffer class
-	typedef zmembuf::_Mydata		_Mydata;			//!< The container class
+	typedef zmembuf					zmembuf;				//!< The stream buffer class
+	typedef zmembuf::container_type		_Mydata;			//!< The container class
 
 	//! Constructor
 	izmstream();
@@ -44,7 +40,7 @@ public:
 	virtual ~izmstream();
 
 	//! Returns a pointer to the stream buffer.
-	_Mysb *rdbuf()							const	{ return const_cast< _Mysb * >( &_Membuffer ); }
+	zmembuf *rdbuf()							const	{ return const_cast< zmembuf * >( &_Membuffer ); }
 
 	//! Returns the contents of the memory buffer.
 	_Mydata const & buffer()				const	{ return _Membuffer.buffer(); }
@@ -54,7 +50,7 @@ public:
 
 private:
 
-	_Mysb _Membuffer;		//!< The memory buffer
+	zmembuf _Membuffer;		//!< The memory buffer
 };
 
 
@@ -70,7 +66,7 @@ public:
 
 	typedef unsigned char			char_type;			//!< Element type
 	typedef zmembuf					_Mysb;				//!< The stream buffer class
-	typedef zmembuf::_Mydata		_Mydata;			//!< The container class
+	typedef zmembuf::container_type		_Mydata;			//!< The container class
 
 	//! Constructor
 	ozmstream();
