@@ -1,5 +1,7 @@
-cmake_minimum_required (VERSION 3.4)
+cmake_minimum_required (VERSION 3.8)
 project(zstream CXX)
+
+option(BUILD_SHARED_LIBS "Build libraries as DLLs" FALSE)
 
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
@@ -11,18 +13,16 @@ if(DOXYGEN_FOUND)
     )
 endif(DOXYGEN_FOUND)
 
-add_definitions(
-    -DNOMINMAX
-    -DWIN32_LEAN_AND_MEAN
-    -DVC_EXTRALEAN
-    -D_CRT_SECURE_NO_WARNINGS
-    -D_SECURE_SCL=0
-    -D_SCL_SECURE_NO_WARNINGS
+set(CMAKE_LIBRARY_PATH
+     ${CMAKE_SOURCE_DIR}/../3rdParty/zlib/lib
+)
+set(CMAKE_INCLUDE_PATH
+     ${CMAKE_SOURCE_DIR}/../3rdParty/zlib/include
 )
 
-option(BUILD_SHARED_LIBS "Build libraries as DLLs" FALSE)
-
-find_library(zlib NAMES zlib PATHS ../3rdParty/zlib/lib NO_DEFAULT_PATH)
+find_library(ZLIB zlib)
+find_library(ZLIBD zlibd)
+find_path(ZLIB_INCLUDE_DIR zlib/zlib.h)
 
 #set(zstream_VERSION_MAJOR 0)
 #set(zstream_VERSION_MINOR 1)
@@ -30,11 +30,7 @@ find_library(zlib NAMES zlib PATHS ../3rdParty/zlib/lib NO_DEFAULT_PATH)
 
 set(PUBLIC_INCLUDE_PATHS
     include/zstream
-)
-
-set(PRIVATE_INCLUDE_PATHS
-    ../3rdParty/zlib/include
-    ../3rdParty/zlib/include/zlib
+    ${ZLIB_INCLUDE_DIR}
 )
 
 set(SOURCES
@@ -42,7 +38,7 @@ set(SOURCES
     include/zstream/zfstream.h
     include/zstream/zmembuf.h
     include/zstream/zmstream.h
-    
+
     zfilebuf.cpp
     zfstream.cpp
     zmembuf.cpp
@@ -50,5 +46,18 @@ set(SOURCES
 )
 
 add_library(zstream ${SOURCES})
-target_include_directories(zstream PUBLIC ${PUBLIC_INCLUDE_PATHS} PRIVATE ${PRIVATE_INCLUDE_PATHS})
-target_link_libraries(zstream zlib)
+target_compile_definitions(zstream
+    PRIVATE
+        -DNOMINMAX
+        -DWIN32_LEAN_AND_MEAN
+        -DVC_EXTRALEAN
+        -D_CRT_SECURE_NO_WARNINGS
+        -D_SECURE_SCL=0
+        -D_SCL_SECURE_NO_WARNINGS
+)
+target_include_directories(zstream PUBLIC ${PUBLIC_INCLUDE_PATHS})
+target_link_libraries(zstream 
+    debug ${ZLIBD}
+    optimized ${ZLIB})
+
+#add_subdirectory(test)

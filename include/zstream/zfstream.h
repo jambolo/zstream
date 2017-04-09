@@ -22,8 +22,9 @@
 class izfstream : public std::basic_istream<unsigned char, std::char_traits<unsigned char> >
 {
 public:
-    typedef unsigned char                               char_type;      //!< Element type
-    typedef std::char_traits<unsigned char>             traits_type;    //!< The element type's traits (not used, included for completeness)
+    typedef unsigned char char_type;                                    //!< Element type
+    typedef std::char_traits<unsigned char>             traits_type;    //!< The element type's traits (not used, included for
+                                                                        // completeness)
     typedef std::basic_istream<char_type, traits_type>  base_type;      //!< Base class type
     typedef std::basic_ios<char_type, traits_type>      ios_type;       //!< IOS type
 
@@ -50,14 +51,11 @@ private:
 class ozfstream : public std::basic_ostream<unsigned char, std::char_traits<unsigned char> >
 {
 public:
-    typedef unsigned char                   char_type;      //!< Element type
+    typedef unsigned char char_type;                        //!< Element type
     typedef std::char_traits<unsigned char> traits_type;    //!< The element type's traits (not used, included for completeness)
 
     // Constructor
     explicit ozfstream(const char * name = nullptr);
-
-    // Destructor
-    virtual ~ozfstream();
 
     //! Returns a pointer to filebuffer
     zfilebuf * rdbuf() const { return const_cast<zfilebuf *>(&fileBuffer_); }

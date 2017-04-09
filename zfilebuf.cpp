@@ -18,9 +18,9 @@
 #include <fstream>
 #include <streambuf>
 
-//! Construct from pointer to a file
 //!
-zfilebuf::zfilebuf(gzFile file /* = 0*/)
+//! @param  file
+zfilebuf::zfilebuf(gzFile file /* = nullptr*/)
     : base_type()
 {
     if (file)
@@ -203,7 +203,8 @@ zfilebuf::int_type zfilebuf::uflow()
 
 zfilebuf::pos_type zfilebuf::seekoff(off_type                off,
                                      std::ios_base::seekdir  way,
-                                     std::ios_base::openmode openmode /* = (std::ios_base::openmode) (std::ios_base::in|std::ios_base::out)*/)
+                                     std::ios_base::openmode openmode /*= (std::ios_base::openmode)
+                                                                         (std::ios_base::in|std::ios_base::out)*/)
 {
     int mode;
 
@@ -254,13 +255,14 @@ zfilebuf::pos_type zfilebuf::seekoff(off_type                off,
 }
 
 //! @param	pos		    Location to move the pointer
-//! @param	which    	Ignored (both in and out pointers are moved)
+//! @param	which       Ignored (both in and out pointers are moved)
 //! @note	There are restrictions imposed by @c zlib:
 //!				-#	<tt>std::ios_base::end</tt> is not supported as a start location
 //!				-#	Only forward seeks are allowed in output buffers
 
 zfilebuf::pos_type zfilebuf::seekpos(pos_type                pos,
-                                     std::ios_base::openmode which    /* = (std::ios_base::openmode) (std::ios_base::in | std::ios_base::out)*/)
+                                     std::ios_base::openmode which /* = (std::ios_base::openmode) (std::ios_base::in |
+                                                                      std::ios_base::out)*/)
 {
     return seekoff(pos, std::ios_base::beg);
 }

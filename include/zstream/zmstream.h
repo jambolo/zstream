@@ -1,15 +1,15 @@
 /** @file *//********************************************************************************************************
- 
+
                                                      zmstream.h
- 
-						                    Copyright 2003, John J. Bolton
-	--------------------------------------------------------------------------------------------------------------
- 
-	$Header: //depot/Libraries/zstream/zmstream.h#5 $
- 
-	$NoKeywords: $
- 
-*********************************************************************************************************************/
+
+                                            Copyright 2003, John J. Bolton
+    --------------------------------------------------------------------------------------------------------------
+
+    $Header: //depot/Libraries/zstream/zmstream.h#5 $
+
+    $NoKeywords: $
+
+ *********************************************************************************************************************/
 
 #pragma once
 
@@ -17,79 +17,65 @@
 
 #include <istream>
 #include <ostream>
-#include <vector>
-#include <iomanip>
 
-//! An input stream that decompresses the data using @c zlib from a buffer
+//! An input stream that decompresses the data from a buffer using @c zlib.
 
-class izmstream : public std::basic_istream< unsigned char, std::char_traits< unsigned char > >
+class izmstream : public std::basic_istream<unsigned char, std::char_traits<unsigned char> >
 {
 public:
 
-	typedef unsigned char			char_type;			//!< Element type
-	typedef zmembuf					zmembuf;				//!< The stream buffer class
-	typedef zmembuf::container_type		_Mydata;			//!< The container class
+    typedef unsigned char char_type;                    //!< Element type
+    typedef zmembuf::container_type container_type;     //!< The container class
 
-	//! Constructor
-	izmstream();
+    // Constructor
+    izmstream();
 
-	//!Constructor
-	explicit izmstream( _Mydata const &	_Newbuf );
+    // Constructor
+    //!
+    //! @param   buf     buffer to decompress
+    explicit izmstream(container_type const & buf);
 
-	//! Destructor
-	virtual ~izmstream();
+    //! Returns a pointer to the stream buffer.
+    zmembuf * rdbuf() const { return const_cast<zmembuf *>(&membuf_); }
 
-	//! Returns a pointer to the stream buffer.
-	zmembuf *rdbuf()							const	{ return const_cast< zmembuf * >( &_Membuffer ); }
+    //! Returns the contents of the memory buffer.
+    container_type const & buffer() const { return membuf_.buffer(); }
 
-	//! Returns the contents of the memory buffer.
-	_Mydata const & buffer()				const	{ return _Membuffer.buffer(); }
-
-	//! Replaces the contents of the memory buffer.
-	void buffer( _Mydata const & _Newbuf )			{ _Membuffer.buffer( _Newbuf ); }
+    //! Replaces the contents of the memory buffer.
+    void buffer(container_type const & buf) { membuf_.buffer(buf); }
 
 private:
 
-	zmembuf _Membuffer;		//!< The memory buffer
+    zmembuf membuf_;     // The memory buffer
 };
 
+//! An output stream that compresses the data into a buffer using @c zlib
 
-/********************************************************************************************************************/
-/*																													*/
-/********************************************************************************************************************/
-
-//! An output stream that compresses the data using @c zlib into a memory buffer
-
-class ozmstream : public std::basic_ostream< unsigned char, std::char_traits< unsigned char > >
+class ozmstream : public std::basic_ostream<unsigned char, std::char_traits<unsigned char> >
 {
 public:
 
-	typedef unsigned char			char_type;			//!< Element type
-	typedef zmembuf					_Mysb;				//!< The stream buffer class
-	typedef zmembuf::container_type		_Mydata;			//!< The container class
+    typedef unsigned char char_type;                    //!< Element type
+    typedef zmembuf::container_type container_type;     //!< The container class
 
-	//! Constructor
-	ozmstream();
+    //! Constructor
+    ozmstream();
 
-	//! Destructor
-	virtual ~ozmstream();
+    //! Returns a pointer to the stream buffer.
+    zmembuf * rdbuf() const { return const_cast<zmembuf *>(&membuf_); }
 
-	//! Returns a pointer to the stream buffer.
-	_Mysb * rdbuf()							const	{ return const_cast< _Mysb * >( &_Membuffer ); }
+    //! Returns the contents of the memory buffer.
+    container_type const & buffer() const { return membuf_.buffer(); }
 
-	//! Returns the contents of the memory buffer.
-	_Mydata const & buffer()				const	{ return _Membuffer.buffer(); }
+    //! Replaces the contents of the memory buffer.
+    void buffer(container_type const & buf)  { membuf_.buffer(buf); }
 
-	//! Replaces the contents of the memory buffer.
-	void buffer( _Mydata const & _Newbuf )			{ _Membuffer.buffer( _Newbuf ); }
-
-	//! Sets the compression level.
-
-	//!
-	//! @param	level	Compression level. 0 is no compression, 9 is maximum compression.
-	void set_compression( int level )				{ _Membuffer.set_compression( level ); }
+    //! Sets the compression level.
+    //!
+    //! @param	level	Compression level. 0 is no compression, 9 is maximum compression.
+    void set_compression(int level) { membuf_.set_compression(level); }
 
 private:
 
-	_Mysb _Membuffer;		//!< The memory buffer
+    zmembuf membuf_;     // The memory buffer
 };
